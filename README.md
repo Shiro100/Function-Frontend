@@ -1,5 +1,5 @@
 
-# Assessment Smart Contract
+# Smart Contract Management
 
 A simple Solidity contract that allows the owner to manage their balance by depositing and withdrawing funds. The contract ensures that only the owner can perform these operations, and it emits events upon successful transactions. It also includes custom error handling for insufficient balance when attempting to withdraw more than the available balance.
 
