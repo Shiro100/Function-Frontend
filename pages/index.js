@@ -7,9 +7,10 @@ export default function HomePage() {
   const [account, setAccount] = useState(undefined);
   const [atm, setATM] = useState(undefined);
   const [balance, setBalance] = useState(undefined);
-  const [depositAmount, setDepositAmount] = useState(0);
-  const [withdrawAmount, setWithdrawAmount] = useState(0);
-  const [status, setStatus] = useState("");
+  const [depositAmount, setDepositAmount] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
   const atmABI = atm_abi.abi;
@@ -17,31 +18,37 @@ export default function HomePage() {
   const getWallet = async () => {
     if (window.ethereum) {
       setEthWallet(window.ethereum);
+    } else {
+      setStatusMessage("MetaMask is not installed. Please install it to use this application.");
     }
 
     if (ethWallet) {
-      const account = await ethWallet.request({ method: "eth_accounts" });
-      handleAccount(account);
+      const accounts = await ethWallet.request({ method: "eth_accounts" });
+      handleAccount(accounts);
     }
   };
 
-  const handleAccount = (account) => {
-    if (account) {
-      setAccount(account[0]);
+  const handleAccount = (accounts) => {
+    if (accounts.length > 0) {
+      setAccount(accounts[0]);
+      getATMContract();
     } else {
-      console.log("No account found");
+      setStatusMessage("No connected account found. Please connect your MetaMask wallet.");
     }
   };
 
   const connectAccount = async () => {
     if (!ethWallet) {
-      alert("MetaMask wallet is required to connect");
+      alert("MetaMask wallet is required to connect.");
       return;
     }
 
-    const accounts = await ethWallet.request({ method: "eth_requestAccounts" });
-    handleAccount(accounts);
-    getATMContract();
+    try {
+      const accounts = await ethWallet.request({ method: "eth_requestAccounts" });
+      handleAccount(accounts);
+    } catch (error) {
+      setStatusMessage("Failed to connect MetaMask. Please try again.");
+    }
   };
 
   const getATMContract = () => {
@@ -53,22 +60,30 @@ export default function HomePage() {
 
   const getBalance = async () => {
     if (atm) {
-      const balance = await atm.getBalance();
-      setBalance(balance);
+      try {
+        const balance = await atm.getBalance();
+        setBalance(balance);
+      } catch (error) {
+        setStatusMessage("Error fetching balance. Please try again.");
+      }
     }
   };
 
   const deposit = async () => {
     if (atm) {
       try {
-        setStatus("Processing deposit...");
-        let amount = ethers.utils.parseEther(depositAmount.toString());
-        let tx = await atm.deposit(amount);
+        setIsProcessing(true);
+        setStatusMessage("Processing deposit...");
+        const amount = ethers.utils.parseEther(depositAmount.toString());
+        const tx = await atm.deposit(amount);
         await tx.wait();
-        setStatus("Deposit successful!");
+        setDepositAmount("");
         getBalance();
+        setStatusMessage("Deposit successful!");
       } catch (error) {
-        setStatus("Deposit failed. Please try again.");
+        setStatusMessage("Deposit failed. Please ensure you have sufficient funds and try again.");
+      } finally {
+        setIsProcessing(false);
       }
     }
   };
@@ -76,14 +91,18 @@ export default function HomePage() {
   const withdraw = async () => {
     if (atm) {
       try {
-        setStatus("Processing withdrawal...");
-        let amount = ethers.utils.parseEther(withdrawAmount.toString());
-        let tx = await atm.withdraw(amount);
+        setIsProcessing(true);
+        setStatusMessage("Processing withdrawal...");
+        const amount = ethers.utils.parseEther(withdrawAmount.toString());
+        const tx = await atm.withdraw(amount);
         await tx.wait();
-        setStatus("Withdrawal successful!");
+        setWithdrawAmount("");
         getBalance();
+        setStatusMessage("Withdrawal successful!");
       } catch (error) {
-        setStatus("Withdrawal failed. Please try again.");
+        setStatusMessage("Withdrawal failed. Please ensure you have sufficient balance and try again.");
+      } finally {
+        setIsProcessing(false);
       }
     }
   };
@@ -95,49 +114,50 @@ export default function HomePage() {
 
     if (!account) {
       return (
-        <button className="btn connect-btn" onClick={connectAccount}>
+        <button className="button" onClick={connectAccount}>
           Connect Wallet
         </button>
       );
     }
 
-    if (balance == undefined) {
+    if (balance === undefined) {
       getBalance();
     }
 
     return (
-      <div className="atm-interface">
-        <div className="header">
-          <h2>Welcome, {account}</h2>
-          <p>Balance: {balance && ethers.utils.formatEther(balance)} ETH</p>
-        </div>
-        <div className="actions">
-          <div className="form">
-            <label>Deposit Amount:</label>
+      <div className="dashboard">
+        <p>Connected Account: {account}</p>
+        <p>Balance: {balance && ethers.utils.formatEther(balance)} ETH</p>
+
+        <div className="transaction">
+          <div className="input-group">
             <input
               type="number"
+              placeholder="Enter deposit amount"
               value={depositAmount}
               onChange={(e) => setDepositAmount(e.target.value)}
-              placeholder="Enter deposit amount"
+              disabled={isProcessing}
             />
-            <button className="action-button" onClick={deposit}>
+            <button onClick={deposit} disabled={isProcessing}>
               Deposit
             </button>
           </div>
-          <div className="form">
-            <label>Withdraw Amount:</label>
+
+          <div className="input-group">
             <input
               type="number"
+              placeholder="Enter withdraw amount"
               value={withdrawAmount}
               onChange={(e) => setWithdrawAmount(e.target.value)}
-              placeholder="Enter withdraw amount"
+              disabled={isProcessing}
             />
-            <button className="action-button" onClick={withdraw}>
+            <button onClick={withdraw} disabled={isProcessing}>
               Withdraw
             </button>
           </div>
         </div>
-        {status && <p className="status">{status}</p>}
+
+        {statusMessage && <p className="status-message">{statusMessage}</p>}
       </div>
     );
   };
@@ -149,77 +169,53 @@ export default function HomePage() {
   return (
     <main className="container">
       <header>
-        <h1>MetaCrafter ATM</h1>
+        <h1>Ethereum ATM</h1>
       </header>
       {initUser()}
       <style jsx>{`
         .container {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          height: 100vh;
-          font-family: Arial, sans-serif;
-          background: #1e2859;
-          color: #fff;
-        }
-        header h1 {
-          color: #4caf50;
-          margin-bottom: 20px;
-        }
-        .atm-interface {
-          background: #0a2e66;
-          padding: 30px;
-          border-radius: 10px;
           max-width: 600px;
+          margin: auto;
+          padding: 20px;
+          background: #1e2859;
+          color: white;
+          font-family: Arial, sans-serif;
+          text-align: center;
+          border-radius: 10px;
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-          color: white;
         }
-        .header h2 {
-          color: #e0e0e0;
+        h1 {
+          color: #4caf50;
         }
-        .header p {
-          font-size: 1.2em;
-          margin-top: 5px;
+        .dashboard {
+          margin-top: 20px;
         }
-        .actions {
-          display: flex;
-          flex-direction: column;
-          gap: 15px;
-        }
-        .action-button {
-          background: #0077ff;
-          color: white;
-          border: none;
-          padding: 15px;
-          border-radius: 5px;
-          cursor: pointer;
-          font-size: 1em;
-        }
-        .action-button:hover {
-          background: #005ecc;
-        }
-        .form {
-          margin: 15px 0;
-          text-align: left;
-        }
-        label {
-          font-size: 1.1em;
-          margin-bottom: 5px;
+        .input-group {
+          margin: 10px 0;
         }
         input {
-          width: 100%;
           padding: 10px;
+          width: 70%;
           border-radius: 5px;
-          border: none;
-          margin-bottom: 10px;
+          border: 1px solid #ccc;
         }
-        .status {
-          margin-top: 15px;
-          background: #f4b400;
-          color: black;
-          padding: 10px;
+        button {
+          padding: 10px 20px;
+          margin-left: 10px;
+          background-color: #0077ff;
+          color: white;
+          border: none;
           border-radius: 5px;
+          cursor: pointer;
+        }
+        button:disabled {
+          background-color: #ccc;
+          cursor: not-allowed;
+        }
+        .status-message {
+          margin-top: 20px;
+          font-size: 1.2em;
+          color: #ffd700;
         }
       `}</style>
     </main>
